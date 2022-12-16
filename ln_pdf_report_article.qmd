@@ -1,0 +1,184 @@
+---
+title: "Interactive production of automated and dynamic pdf reports with R Shiny and Quarto"
+author: "Dr. Jan Weinert"
+format: html
+page-layout: full
+execute: 
+  eval: false
+  error: true
+---
+
+# Introduction
+
+This sample code shows how to easily set up a Shiny dashboard that can be used to configure static pdf reports and generate them via Quarto.
+
+## Shiny App
+
+First of all, a Shiny App is needed (`App.R`), which consist of the UI and the server component. In the UI the widgets are defined, in the server part the logic. Also, the quarto document that is rendered is placed here. The Shiny input Parameters `input$species`, `input$island`  and `input$sex` are passed to the list `params`, which the quarto document can handle.
+
+```{.r filename="App.R"}
+shinyApp(
+  ui = fluidPage(
+    checkboxGroupInput("species", label = h3("By Species"), 
+                       choices = list("Adelie" = "Adelie", 
+                                      "Chinstrap" = "Chinstrap", 
+                                      "Gentoo" = "Gentoo"),
+    ),
+    checkboxGroupInput("island", label = h3("By Island"), 
+                       choices = list("Biscoe" = "Biscoe", 
+                                      "Dream" = "Dream", 
+                                      "Torgersen" = "Torgersen"),
+    ),
+    checkboxGroupInput("sex", label = h3("By Sex"), 
+                       choices = list("female" = "female", 
+                                      "male" = "male"),
+    ),
+    h3("Generate Report"),
+    downloadButton("report", "Generate report")
+  ),
+  server = function(input, output) {
+    output$report <- downloadHandler(
+      
+      filename = "report.pdf",
+      content = function(file) {
+
+        tempReport <- file.path(tempdir())
+        file.copy(list.files(getwd()), tempReport, overwrite = TRUE, recursive = TRUE)
+
+        params <- list(species = input$species,
+                       island = input$island,
+                       sex = input$sex
+        )
+        quarto::quarto_render(paste0(tempReport,"/Report.qmd"),
+                              output_file = file,
+                              execute_params = params
+                              )
+      }
+    )
+  }
+)
+```
+
+## The Quarto Report
+
+The Quarto report consists of the main quarto file `Report.qmd` where the report is configured via a YAML header. Here, the variables set in the `params` list in the shiny app specified and default values can be set. This ensures that the Quarto report can be run without the Shiny app. This is especially helpful with debugging. In addition, the dynamic content of the report (`Species.qmd`, `Island.qmd`, `Sex.qmd`) is included based on the parameters selected in the Shiny Dashboard.
+
+````{.qmd filename="Report.qmd"}
+---
+title: "Penguins Report"
+date: "`r format(Sys.time(), '%B %Y')`"
+format: 
+  pdf:
+    toc: true
+    fig-width: 7
+    fig-height: 5
+    geometry: 
+      - top = 20mm
+      - bottom = 20mm
+      - left = 20mm
+      - right = 20mm
+params:
+  species:
+    value: [Adelie, Chinstrap, Gentoo]
+  island:
+    value: [Biscoe, Dream, Torgersen]
+  sex:
+    value: [female, male]
+classoption: landscape
+---
+
+```{{r setup, message=FALSE, warning=FALSE, include=FALSE}}
+library(palmerpenguins) 
+library(tidyverse)
+data <- penguins
+```
+\newpage
+
+```{{r species, results="asis",echo=FALSE,warning=FALSE}}
+
+if (length(params$species)==0) {cat("")} else {cat("# By Species","\n")}
+for(i in params$species) {
+  cat(knitr::knit_child("Species.qmd", quiet = TRUE),
+          "\n\n")}
+
+if (length(params$island)==0) {cat("")} else {cat("# By Island","\n")}
+for(j in params$island) {
+  cat(knitr::knit_child("Island.qmd", quiet = TRUE),
+          "\n\n")}
+
+if (length(params$sex)==0) {cat("")} else {cat("# By Sex","\n")}
+for(k in params$sex) {
+  cat(knitr::knit_child("Sex.qmd", quiet = TRUE),
+          "\n\n")}
+```
+````
+
+
+::: panel-tabset
+## Species.qmd
+
+````{.qmd filename="Species.qmd"}
+## `r i`
+
+There are `r data %>% count(species) %>% filter(species == i) %>% pull()` penguins of species `r i`.
+
+```{{r echo=FALSE, warning=FALSE, results="asis"}}
+
+data %>% 
+  filter(species == i) %>% 
+  ggplot(aes(x=bill_length_mm,y=bill_depth_mm,color=body_mass_g,size=flipper_length_mm,shape =as_factor(year))) +
+  geom_point() +
+  theme_bw() +
+  facet_grid(island~sex) +
+  theme(legend.position="bottom") +
+  ggtitle(i)
+  
+```
+
+\newpage
+````
+
+## Island.qmd
+````{.qmd filename="Island.qmd"}
+## `r j`
+
+There are `r data %>% count(island) %>% filter(island == j) %>% pull()` penguins living on island `r j`.
+
+```{{r echo=FALSE, fig.height=5, fig.width=10, warning=FALSE, results="asis"}}
+
+data %>% 
+  filter(island == j) %>% 
+  ggplot(aes(x=bill_length_mm,y=bill_depth_mm,color=body_mass_g,size=flipper_length_mm,shape =as_factor(year))) +
+  geom_point() +
+  theme_bw() +
+  facet_grid(species~sex) +
+  theme(legend.position="bottom") +
+  ggtitle(j)
+  
+```
+
+\newpage
+````
+## Sex.qmd
+
+````{.qmd filename="Sex.qmd"}
+## `r k`
+
+There are `r data %>% count(sex) %>% filter(sex == k) %>% pull()` penguins of sex `r k`.
+
+```{{r echo=FALSE, fig.height=5, fig.width=10, warning=FALSE, results="asis"}}
+
+data %>% 
+  filter(sex == k) %>% 
+  ggplot(aes(x=bill_length_mm,y=bill_depth_mm,color=body_mass_g,size=flipper_length_mm,shape =as_factor(year))) +
+  geom_point() +
+  theme_bw() +
+  facet_grid(species~island) +
+  theme(legend.position="bottom") +
+  ggtitle(k)
+  
+```
+
+\newpage
+````
+:::

@@ -1,0 +1,4 @@
+- source: ln_pdf_report_article.qmd
+  quarto-pub:
+    - id: 6fb64ed1-603a-4297-a767-c2d85cdd433a
+      url: 'https://quartopub.com/sites/janwein/interactive-production-of-automated-and-dynamic-pdf-reports-with-r-shiny-and-quarto'
